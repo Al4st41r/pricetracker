@@ -60,9 +60,9 @@ function renderTable(items) {
             <tr>
                 <th class="sortable-header" data-sort-by="Product Name">Product Name${sortIndicator('Product Name')}</th>
                 <th>URL</th>
-                <th>CSS Selector</th>
                 <th class="sortable-header" data-sort-by="Current Price">Current Price${sortIndicator('Current Price')}</th>
                 <th class="sortable-header" data-sort-by="Target Price">Target Price${sortIndicator('Target Price')}</th>
+                <th>Method</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -101,12 +101,15 @@ function renderTable(items) {
             saleBadge = '<span class="sale-badge">On Sale!</span>';
         }
 
+        const method = item['Last Check Method'] || 'unknown';
+        const needsBrowser = item['Needs Browser Check'] ? ' <span title="Requires browser emulation" style="cursor:help;">🌐</span>' : '';
+
         row.innerHTML = `
-            <td data-field="Product Name">${item['Product Name']} ${saleBadge}</td>
-            <td data-field="URL"><a href="${item['URL']}" target="_blank">${item['URL'].substring(0, 40)}...</a></td>
-            <td data-field="CSS Selector">${item['CSS Selector'].substring(0, 40)}...</td>
+            <td data-field="Product Name">${item['Product Name']} ${saleBadge}${needsBrowser}</td>
+            <td data-field="URL"><a href="${item['URL']}" target="_blank" title="${item['URL']}">${item['URL'].substring(0, 30)}...</a></td>
             <td data-field="Current Price">${formatCurrency(item['Current Price'], item['Currency'])}${priceChangeIndicator}</td>
             <td data-field="Target Price">${formatCurrency(item['Target Price'], item['Currency'])}</td>
+            <td data-field="Method"><span class="badge badge-info" style="font-size: 0.7em; padding: 2px 6px; background: #eee; border-radius: 4px; color: #666;">${method}</span></td>
             <td data-field="Actions">
                 <button class="edit-btn">Edit</button>
                 <button class="delete-btn">Delete</button>

@@ -15,10 +15,11 @@ import threading
 import base64
 from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urljoin, urlparse
+from datetime import datetime, timedelta
 from parsers import parsers
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'a_super_secret_key' # Replace with a real secret key in production
@@ -57,6 +58,9 @@ class TrackedItem(db.Model):
     price_change_status = db.Column(db.String(10))
     currency = db.Column(db.String(10))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    needs_browser_check = db.Column(db.Boolean, default=False)
+    last_check_method = db.Column(db.String(50))
+    last_browser_check = db.Column(db.DateTime)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -356,11 +360,13 @@ def track_item():
     current_price_str_raw = 'N/A'
     currency = 'GBP'
     current_price = 'N/A'
+    last_check_method = 'unknown'
+    needs_browser_check = False
 
     domain = urlparse(url).netloc
     if domain in parsers:
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             response.encoding = 'utf-8'
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -370,6 +376,7 @@ def track_item():
                 currency = price_info['currency']
                 css_selector = price_info['selector']
                 current_price = re.sub(r'[^\d.]', '', current_price_str_raw)
+                last_check_method = 'parser'
             else:
                 return jsonify({'error': 'Could not find the price for the given URL.'}), 400
         except requests.exceptions.RequestException as e:
@@ -378,7 +385,7 @@ def track_item():
         if not css_selector:
             return jsonify({'error': 'CSS selector is required for unsupported websites.'}), 400
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             response.encoding = 'utf-8'
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -387,10 +394,17 @@ def track_item():
                 current_price_str_raw = price_element.get_text(strip=True)
                 currency = detect_currency(current_price_str_raw)
                 current_price = re.sub(r'[^\d.]', '', current_price_str_raw)
+                last_check_method = 'css_selector'
+            else:
+                print(f"CSS selector failed during initial tracking for {url}")
+                # If CSS selector fails immediately, maybe it needs browser check
+                needs_browser_check = True
         except requests.exceptions.RequestException as e:
             print(f"Error fetching current price for {url} during tracking: {e}")
+            needs_browser_check = True
         except Exception as e:
             print(f"An unexpected error occurred while getting current price for {url}: {e}")
+            needs_browser_check = True
 
     new_item = TrackedItem(
         product_name=product_name,
@@ -400,7 +414,9 @@ def track_item():
         target_price=formatted_target_price,
         price_change_status='new',
         currency=currency,
-        user_id=current_user.id
+        user_id=current_user.id,
+        needs_browser_check=needs_browser_check,
+        last_check_method=last_check_method
     )
     db.session.add(new_item)
     db.session.commit()
@@ -420,7 +436,10 @@ def get_tracked_items():
         'Current Price': item.current_price,
         'Target Price': item.target_price,
         'Price Change Status': item.price_change_status,
-        'Currency': item.currency
+        'Currency': item.currency,
+        'Needs Browser Check': item.needs_browser_check,
+        'Last Check Method': item.last_check_method,
+        'Last Browser Check': item.last_browser_check.isoformat() if item.last_browser_check else None
     } for item in items])
 
 @app.route('/delete_item', methods=['POST'])
@@ -459,89 +478,187 @@ def update_item():
 
     return jsonify({'message': 'Item updated successfully'}), 200
 
-def check_prices():
-    with app.app_context():
-        print("Checking prices...")
-        items = TrackedItem.query.all()
-        for item in items:
-            print(f"Checking {item.product_name} at {item.url} with selector {item.css_selector}")
-            domain = urlparse(item.url).netloc
+def update_item_price(item, new_price_str, method):
+    """
+    Update item price data and handle alerts.
+    """
+    detected_currency = detect_currency(new_price_str)
+    
+    # Update currency if it changed
+    if item.currency != detected_currency:
+        item.currency = detected_currency
+
+    try:
+        cleaned_new_price = float(re.sub(r'[^\d.]', '', new_price_str))
+        cleaned_target_price = float(re.sub(r'[^\d.]', '', item.target_price))
+        cleaned_old_current_price = None
+        if item.current_price and item.current_price != 'N/A':
             try:
-                response = requests.get(item.url)
-                response.encoding = 'utf-8'
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, 'html.parser')
+                cleaned_old_current_price = float(re.sub(r'[^\d.]', '', item.current_price))
+            except (ValueError, TypeError):
+                cleaned_old_current_price = None
 
-                if domain in parsers:
-                    price_info = parsers[domain](soup)
-                    if price_info:
-                        new_current_price_str = price_info['price']
-                        print(f"Found new price for {item.product_name} using parser: {new_current_price_str}")
-                        detected_currency = price_info['currency']
-                    else:
-                        print(f"Parser for {domain} could not find the price for {item.product_name}.")
-                        continue
-                else:
-                    price_element = soup.select_one(item.css_selector)
-                    if price_element:
-                        new_current_price_str = price_element.get_text(strip=True)
-                        print(f"Found new price for {item.product_name}: {new_current_price_str}")
-                        detected_currency = detect_currency(new_current_price_str)
-                    else:
-                        print(f"Price element not found for {item.product_name} with selector {item.css_selector}")
-                        continue
+        if cleaned_old_current_price is not None:
+            if cleaned_new_price > cleaned_old_current_price:
+                item.price_change_status = 'up'
+            elif cleaned_new_price < cleaned_old_current_price:
+                item.price_change_status = 'down'
+            else:
+                item.price_change_status = 'same'
+        else:
+            item.price_change_status = 'new'
 
-                # Update currency if it changed
-                if item.currency != detected_currency:
-                    item.currency = detected_currency
+        item.current_price = "{:.2f}".format(cleaned_new_price)
+        item.last_check_method = method
 
-                try:
-                    cleaned_new_price = float(re.sub(r'[^\d.]', '', new_current_price_str))
-                    cleaned_target_price = float(re.sub(r'[^\d.]', '', item.target_price))
-                    cleaned_old_current_price = None
-                    if item.current_price and item.current_price != 'N/A':
-                        try:
-                            cleaned_old_current_price = float(re.sub(r'[^\d.]', '', item.current_price))
-                        except (ValueError, TypeError):
-                            cleaned_old_current_price = None
-
-                    if cleaned_old_current_price is not None:
-                        if cleaned_new_price > cleaned_old_current_price:
-                            item.price_change_status = 'up'
-                        elif cleaned_new_price < cleaned_old_current_price:
-                            item.price_change_status = 'down'
-                        else:
-                            item.price_change_status = 'same'
-                    else:
-                        item.price_change_status = 'new'
-
-                    item.current_price = "{:.2f}".format(cleaned_new_price)
-
-                    if cleaned_new_price <= cleaned_target_price:
-                        if item.owner.email_notifications:
-                            send_email(
-                                to=item.owner.email,
-                                subject=f"Price Alert for {item.product_name}",
-                                body=f"""The price of {item.product_name} has dropped to {item.currency}{item.current_price}!
+        if cleaned_new_price <= cleaned_target_price:
+            if item.owner.email_notifications:
+                send_email(
+                    to=item.owner.email,
+                    subject=f"Price Alert for {item.product_name}",
+                    body=f"""The price of {item.product_name} has dropped to {item.currency}{item.current_price}!
 
 Tracked URL: {item.url}"""
-                            )
-                        alert_message = f"""*** PRICE ALERT! ***
+                )
+            alert_message = f"""*** PRICE ALERT! ***
 Product: {item.product_name}
 URL: {item.url}
 New Price: {item.currency}{item.current_price}
 Target Price: {item.currency}{item.target_price}
 """
-                        print(alert_message)
-                except (ValueError, TypeError) as e:
-                    print(f"Could not convert price to number for {item.product_name}: {e}")
-                    # Keep original string if conversion fails
-                    item.current_price = new_current_price_str
-            except requests.exceptions.RequestException as e:
-                print(f"Error fetching {item.url}: {e}")
-            except Exception as e:
-                print(f"An unexpected error occurred for {item.product_name}: {e}")
-                raise e
+            print(alert_message)
+        return True
+    except (ValueError, TypeError) as e:
+        print(f"Could not convert price to number for {item.product_name}: {e}")
+        # Keep original string if conversion fails
+        item.current_price = new_price_str
+        item.last_check_method = method
+        return True
+
+def browser_check_price(url):
+    """
+    Use Playwright to get price from a URL.
+    Returns (price_str, selector) or (None, None).
+    """
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                viewport={'width': 1280, 'height': 720},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            page = context.new_page()
+            page.goto(url, wait_until='networkidle', timeout=30000)
+            page.wait_for_timeout(2000)
+
+            # Use the same auto-detection script as discover_price
+            price_data = page.evaluate('''() => {
+                const currencySymbols = ['£', '$', '€'];
+                const priceRegex = /([£$€]\\s*\\d+[.,]\\d{2})/;
+                let potentialElements = [];
+                const itempropElements = Array.from(document.querySelectorAll('[itemprop="price"]'));
+                potentialElements.push(...itempropElements);
+                const priceClassElements = Array.from(document.querySelectorAll('[class*="price"], [class*="Price"]'));
+                potentialElements.push(...priceClassElements);
+                const allElements = Array.from(document.querySelectorAll('*'));
+                for (const element of allElements) {
+                    if (element.children.length === 0) {
+                        const text = element.textContent.trim();
+                        if (currencySymbols.some(symbol => text.includes(symbol))) {
+                            potentialElements.push(element);
+                        }
+                    }
+                }
+                const rankedElements = potentialElements.map(el => {
+                    if (el.offsetParent === null) return null;
+                    const text = el.textContent.trim();
+                    const match = text.match(priceRegex);
+                    if (match) {
+                        let score = 1 / (text.length + 1);
+                        if (el.hasAttribute('itemprop') && el.getAttribute('itemprop') === 'price') score += 10;
+                        const className = el.className.toLowerCase();
+                        if (className.includes('price')) score += 5;
+                        let selector = el.id ? '#' + el.id : (el.className ? '.' + el.className.split(' ')[0] : el.tagName.toLowerCase());
+                        return { price: match[1], score: score, selector: selector };
+                    }
+                    return null;
+                }).filter(Boolean);
+                rankedElements.sort((a, b) => b.score - a.score);
+                return rankedElements[0] || null;
+            }''')
+            browser.close()
+            if price_data:
+                return price_data['price'], price_data['selector']
+    except Exception as e:
+        print(f"Browser check failed for {url}: {e}")
+    return None, None
+
+def check_prices():
+    with app.app_context():
+        print("Checking prices...")
+        items = TrackedItem.query.all()
+        for item in items:
+            print(f"Checking {item.product_name} at {item.url}")
+            new_price_str = None
+            method = None
+            
+            # Tier 1: Site-specific Parser
+            domain = urlparse(item.url).netloc
+            if domain in parsers:
+                try:
+                    response = requests.get(item.url, timeout=10)
+                    response.encoding = 'utf-8'
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    price_info = parsers[domain](soup)
+                    if price_info:
+                        new_price_str = price_info['price']
+                        method = 'parser'
+                        print(f"Parser success for {item.product_name}")
+                except Exception as e:
+                    print(f"Parser failed for {item.product_name}: {e}")
+
+            # Tier 2: CSS Selector (BeautifulSoup)
+            if not new_price_str and item.css_selector:
+                try:
+                    response = requests.get(item.url, timeout=10)
+                    response.encoding = 'utf-8'
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    price_element = soup.select_one(item.css_selector)
+                    if price_element:
+                        new_price_str = price_element.get_text(strip=True)
+                        method = 'css_selector'
+                        print(f"CSS selector success for {item.product_name}")
+                except Exception as e:
+                    print(f"CSS selector failed for {item.product_name}: {e}")
+
+            # Tier 3: Browser Recheck (Playwright)
+            time_for_weekly_check = False
+            if item.needs_browser_check:
+                if not item.last_browser_check or (datetime.now() - item.last_browser_check) > timedelta(days=7):
+                    time_for_weekly_check = True
+
+            if not new_price_str or time_for_weekly_check:
+                reason = "Failure" if not new_price_str else "Weekly check"
+                print(f"Attempting browser check for {item.product_name} (Reason: {reason})")
+                browser_price, new_selector = browser_check_price(item.url)
+                if browser_price:
+                    # If we got here because of failure, mark as needs browser
+                    if not new_price_str:
+                        item.needs_browser_check = True
+                    
+                    new_price_str = browser_price
+                    method = 'browser'
+                    item.last_browser_check = datetime.now()
+                    # If we found a new selector, update it
+                    if new_selector and new_selector != item.css_selector:
+                        item.css_selector = new_selector
+                    print(f"Browser check success for {item.product_name}")
+                else:
+                    print(f"Browser check failed for {item.product_name}")
+
+            if new_price_str:
+                update_item_price(item, new_price_str, method)
+
         db.session.commit()
         print("Price checking complete.")
 
