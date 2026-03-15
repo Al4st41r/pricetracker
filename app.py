@@ -62,6 +62,13 @@ class TrackedItem(db.Model):
     last_check_method = db.Column(db.String(50))
     last_browser_check = db.Column(db.DateTime)
 
+class PriceHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(db.Integer, db.ForeignKey('tracked_item.id'), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    item = db.relationship('TrackedItem', backref=db.backref('history', cascade="all, delete-orphan", lazy=True))
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -420,6 +427,17 @@ def track_item():
     )
     db.session.add(new_item)
     db.session.commit()
+
+    # Add initial price to history if available
+    if current_price != 'N/A':
+        try:
+            cleaned_price = float(current_price)
+            new_history = PriceHistory(item_id=new_item.id, price=cleaned_price)
+            db.session.add(new_history)
+            db.session.commit()
+        except (ValueError, TypeError):
+            pass
+
     return jsonify({'message': 'Item tracked successfully'}), 200
 
 @app.route('/get_tracked_items')
@@ -441,6 +459,23 @@ def get_tracked_items():
         'Last Check Method': item.last_check_method,
         'Last Browser Check': item.last_browser_check.isoformat() if item.last_browser_check else None
     } for item in items])
+
+@app.route('/item/<int:item_id>')
+@login_required
+def item_detail(item_id):
+    item = TrackedItem.query.get_or_404(item_id)
+    if item.user_id != current_user.id:
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+    
+    # Get history for this item
+    history = PriceHistory.query.filter_by(item_id=item.id).order_by(PriceHistory.recorded_at.asc()).all()
+    
+    # Format history for chart
+    labels = [h.recorded_at.strftime('%Y-%m-%d %H:%M') for h in history]
+    prices = [h.price for h in history]
+    
+    return render_template('item_detail.html', item=item, labels=labels, prices=prices)
 
 @app.route('/delete_item', methods=['POST'])
 @login_required
@@ -510,6 +545,10 @@ def update_item_price(item, new_price_str, method):
 
         item.current_price = "{:.2f}".format(cleaned_new_price)
         item.last_check_method = method
+
+        # Record history
+        new_history = PriceHistory(item_id=item.id, price=cleaned_new_price)
+        db.session.add(new_history)
 
         if cleaned_new_price <= cleaned_target_price:
             if item.owner.email_notifications:

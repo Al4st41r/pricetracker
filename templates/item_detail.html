@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ item.product_name }} - Price History | PriceTracker</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>£</text></svg>">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ao-styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .detail-header {
+            margin-bottom: var(--spacing-xl);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--color-border);
+        }
+        .item-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+        }
+        .info-card {
+            background: var(--color-bg-secondary);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius-md);
+            border: 1px solid var(--color-border);
+        }
+        .info-label {
+            font-size: 0.8em;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .info-value {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .chart-container {
+            background: white;
+            padding: var(--spacing-lg);
+            border-radius: var(--border-radius-lg);
+            border: 1px solid var(--color-border);
+            margin-bottom: var(--spacing-xl);
+        }
+        .history-table-container {
+            margin-top: var(--spacing-xl);
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: var(--spacing-lg);
+            text-decoration: none;
+            color: var(--color-primary);
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .status-on-sale {
+            background-color: var(--color-success);
+            color: white;
+        }
+        .status-above {
+            background-color: var(--color-warning);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav-header">
+        <div class="nav-header-container">
+            <h1><a href="{{ url_for('index') }}">PriceTracker</a></h1>
+            <div class="nav-header-nav">
+                <a href="{{ url_for('index') }}">Tracker</a>
+                <span class="nav-separator">|</span>
+                <a href="{{ url_for('settings') }}">{{ current_user.username }}</a>
+                <span class="nav-separator">|</span>
+                <a href="{{ url_for('logout') }}">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-container">
+        <div class="container">
+            <a href="{{ url_for('index') }}" class="back-link">← Back to Dashboard</a>
+            
+            <div class="detail-header">
+                <h1>{{ item.product_name }}</h1>
+                <p><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.url }}</a></p>
+            </div>
+
+            <div class="item-info">
+                <div class="info-card">
+                    <div class="info-label">Current Price</div>
+                    <div class="info-value">
+                        {{ item.currency }}{{ item.current_price }}
+                        {% if item.price_change_status == 'up' %}
+                            <span style="color: var(--color-danger); font-size: 0.7em;">▲</span>
+                        {% elif item.price_change_status == 'down' %}
+                            <span style="color: var(--color-success); font-size: 0.7em;">▼</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Target Price</div>
+                    <div class="info-value">{{ item.currency }}{{ item.target_price }}</div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Status</div>
+                    <div class="info-value">
+                        {% if item.current_price and item.target_price and item.current_price|float <= item.target_price|float %}
+                            <span class="status-badge status-on-sale">ON SALE!</span>
+                        {% else %}
+                            <span class="status-badge status-above">Above Target</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Last Checked</div>
+                    <div class="info-value" style="font-size: 0.9em;">
+                        {{ item.last_browser_check.strftime('%Y-%m-%d %H:%M') if item.last_browser_check else 'Never' }}
+                        <div style="font-size: 0.7em; color: var(--color-text-muted); font-weight: normal;">
+                            Method: {{ item.last_check_method }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="priceChart"></canvas>
+            </div>
+
+            <div class="history-table-container">
+                <h2>Price History Log</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date & Time</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in history|reverse %}
+                            <tr>
+                                <td>{{ record.recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>{{ item.currency }}{{ "%.2f"|format(record.price) }}</td>
+                                <td>
+                                    {% if record.price <= item.target_price|float %}
+                                        <span class="badge badge-success" style="background: var(--color-success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">Target Met</span>
+                                    {% else %}
+                                        <span class="badge" style="background: #eee; color: #666; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">Above Target</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2025 Architools. PriceTracker</p>
+    </footer>
+
+    <script>
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        const labels = {{ labels | tojson }};
+        const prices = {{ prices | tojson }};
+        const targetPrice = {{ item.target_price | float }};
+        
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price ({{ item.currency }})',
+                    data: prices,
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }, {
+                    label: 'Target Price',
+                    data: Array(labels.length).fill(targetPrice),
+                    borderColor: '#e74c3c',
+                    borderWidth: 2,
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: true,
+                        text: 'Price Trend Over Time'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Price'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -105,7 +105,7 @@ function renderTable(items) {
         const needsBrowser = item['Needs Browser Check'] ? ' <span title="Requires browser emulation" style="cursor:help;">🌐</span>' : '';
 
         row.innerHTML = `
-            <td data-field="Product Name">${item['Product Name']} ${saleBadge}${needsBrowser}</td>
+            <td data-field="Product Name"><a href="${APPLICATION_ROOT}/item/${item['id']}" class="item-link">${item['Product Name']}</a> ${saleBadge}${needsBrowser}</td>
             <td data-field="URL"><a href="${item['URL']}" target="_blank" title="${item['URL']}">${item['URL'].substring(0, 30)}...</a></td>
             <td data-field="Current Price">${formatCurrency(item['Current Price'], item['Currency'])}${priceChangeIndicator}</td>
             <td data-field="Target Price">${formatCurrency(item['Target Price'], item['Currency'])}</td>
