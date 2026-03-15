@@ -28,39 +28,52 @@ def parse(soup):
     """
 
     # Amazon has multiple price formats depending on the product type
-    # Try each selector in order of reliability
     selectors = [
         # Main price (most common)
         '.a-price.aok-align-center span.a-offscreen',
         '.a-price span.a-offscreen',
+        '#price_inside_buybox',
+        '#newBuyBoxPrice',
+        '.a-size-medium.a-color-price.header-price',
 
         # Deal price
         '#priceblock_dealprice',
         '#priceblock_ourprice',
+        '[data-asin-price]',
 
         # Sale price
         '#priceblock_saleprice',
+        '.priceBlockStrikePriceString',
 
         # Kindle/Digital content
         '#kindle-price',
         '.kindle-price',
+        '#price',
 
         # Buybox price
         '#buybox .a-price span.a-offscreen',
 
         # Price whole + fraction combination
         '.a-price-whole',
+        
+        # Fallback meta tags
+        'meta[property="product:price:amount"]',
+        'meta[property="og:price:amount"]',
+        'meta[itemprop="price"]',
+        '[itemprop="price"]',
     ]
 
     for selector in selectors:
         price_element = soup.select_one(selector)
         if price_element:
-            price_text = price_element.get_text(strip=True)
+            if price_element.name == 'meta':
+                price_text = price_element.get('content', '')
+            else:
+                price_text = price_element.get_text(strip=True)
 
             # Clean up the price text
-            # Amazon often includes currency symbol and price together
             if price_text:
-                # Detect currency from the price text
+                # Detect currency
                 currency = detect_currency(price_text, soup)
 
                 return {
@@ -70,7 +83,6 @@ def parse(soup):
                 }
 
     return None
-
 
 def detect_currency(price_text, soup):
     """
@@ -84,17 +96,18 @@ def detect_currency(price_text, soup):
         Currency code (e.g., 'GBP', 'USD', 'EUR')
     """
     # Check for currency symbols in price text
-    if '£' in price_text:
+    if '£' in price_text or 'GBP' in price_text.upper():
         return 'GBP'
-    elif '$' in price_text:
-        # Could be USD, CAD, AUD, etc. - check domain
+    elif '$' in price_text or 'USD' in price_text.upper():
         return 'USD'
-    elif '€' in price_text:
+    elif '€' in price_text or 'EUR' in price_text.upper():
         return 'EUR'
 
-    # Fallback: check meta tags or domain
     # Look for currency in meta tags
     meta_currency = soup.find('meta', attrs={'property': 'product:price:currency'})
+    if not meta_currency:
+        meta_currency = soup.find('meta', attrs={'itemprop': 'priceCurrency'})
+    
     if meta_currency and meta_currency.get('content'):
         return meta_currency['content']
 

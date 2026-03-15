@@ -19,4 +19,11 @@ for filename in os.listdir(pkg_dir):
         if hasattr(module, 'domains'):
             for domain in module.domains:
                 if hasattr(module, 'parse'):
+                    # Register the domain as provided
                     parsers[domain] = module.parse
+                    
+                    # Also register with/without www. for convenience
+                    if domain.startswith('www.'):
+                        parsers[domain[4:]] = module.parse
+                    else:
+                        parsers[f'www.{domain}'] = module.parse

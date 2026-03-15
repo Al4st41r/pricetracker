@@ -45,14 +45,20 @@ def parse(soup):
         # Bidding price
         '#prcIsum_bidPrice',
 
-        # Original layout
-        '#prcIsum',
+        # Fallback meta tags
+        'meta[property="product:price:amount"]',
+        'meta[property="og:price:amount"]',
+        'meta[itemprop="price"]',
+        '[itemprop="price"]',
     ]
 
     for selector in selectors:
         price_element = soup.select_one(selector)
         if price_element:
-            price_text = price_element.get_text(strip=True)
+            if price_element.name == 'meta':
+                price_text = price_element.get('content', '')
+            else:
+                price_text = price_element.get_text(strip=True)
 
             if price_text:
                 # Detect currency
@@ -66,7 +72,6 @@ def parse(soup):
 
     return None
 
-
 def detect_currency(price_text, soup):
     """
     Detects currency from price text or page metadata.
@@ -79,29 +84,20 @@ def detect_currency(price_text, soup):
         Currency code (e.g., 'GBP', 'USD', 'EUR')
     """
     # Check for currency symbols in price text
-    if '£' in price_text:
+    if '£' in price_text or 'GBP' in price_text.upper():
         return 'GBP'
-    elif '$' in price_text:
+    elif '$' in price_text or 'USD' in price_text.upper():
         return 'USD'
-    elif '€' in price_text:
+    elif '€' in price_text or 'EUR' in price_text.upper():
         return 'EUR'
 
-    # Look for itemprop price currency
-    meta_currency = soup.find('meta', attrs={'itemprop': 'priceCurrency'})
+    # Look for currency in meta tags
+    meta_currency = soup.find('meta', attrs={'property': 'product:price:currency'})
+    if not meta_currency:
+        meta_currency = soup.find('meta', attrs={'itemprop': 'priceCurrency'})
+    
     if meta_currency and meta_currency.get('content'):
         return meta_currency['content']
 
-    # Check for data attributes
-    price_wrapper = soup.find(attrs={'data-testid': 'x-price-primary'})
-    if price_wrapper:
-        # Try to extract currency from aria-label or data attributes
-        aria_label = price_wrapper.get('aria-label', '')
-        if 'GBP' in aria_label or '£' in aria_label:
-            return 'GBP'
-        elif 'USD' in aria_label or '$' in aria_label:
-            return 'USD'
-        elif 'EUR' in aria_label or '€' in aria_label:
-            return 'EUR'
-
-    # Default to GBP for .co.uk domains
+    # Default to GBP (since most tracked sites are .co.uk)
     return 'GBP'

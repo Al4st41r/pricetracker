@@ -490,41 +490,53 @@ def check_prices():
                     else:
                         print(f"Price element not found for {item.product_name} with selector {item.css_selector}")
                         continue
+
+                # Update currency if it changed
                 if item.currency != detected_currency:
                     item.currency = detected_currency
-                    try:
-                        cleaned_new_price = float(re.sub(r'[^\d.]', '', new_current_price_str))
-                        cleaned_target_price = float(re.sub(r'[^\d.]', '', item.target_price))
-                        cleaned_old_current_price = float(re.sub(r'[^\d.]', '', item.current_price)) if item.current_price != 'N/A' else None
-                        if cleaned_old_current_price is not None:
-                            if cleaned_new_price > cleaned_old_current_price:
-                                item.price_change_status = 'up'
-                            elif cleaned_new_price < cleaned_old_current_price:
-                                item.price_change_status = 'down'
-                            else:
-                                item.price_change_status = 'same'
-                        item.current_price = re.sub(r'[^\d.]', '', new_current_price_str)
-                        if cleaned_new_price <= cleaned_target_price:
-                            if item.owner.email_notifications:
-                                send_email(
-                                    to=item.owner.email,
-                                    subject=f"Price Alert for {item.product_name}",
-                                    body=f"""The price of {item.product_name} has dropped to {item.current_price}!
+
+                try:
+                    cleaned_new_price = float(re.sub(r'[^\d.]', '', new_current_price_str))
+                    cleaned_target_price = float(re.sub(r'[^\d.]', '', item.target_price))
+                    cleaned_old_current_price = None
+                    if item.current_price and item.current_price != 'N/A':
+                        try:
+                            cleaned_old_current_price = float(re.sub(r'[^\d.]', '', item.current_price))
+                        except (ValueError, TypeError):
+                            cleaned_old_current_price = None
+
+                    if cleaned_old_current_price is not None:
+                        if cleaned_new_price > cleaned_old_current_price:
+                            item.price_change_status = 'up'
+                        elif cleaned_new_price < cleaned_old_current_price:
+                            item.price_change_status = 'down'
+                        else:
+                            item.price_change_status = 'same'
+                    else:
+                        item.price_change_status = 'new'
+
+                    item.current_price = "{:.2f}".format(cleaned_new_price)
+
+                    if cleaned_new_price <= cleaned_target_price:
+                        if item.owner.email_notifications:
+                            send_email(
+                                to=item.owner.email,
+                                subject=f"Price Alert for {item.product_name}",
+                                body=f"""The price of {item.product_name} has dropped to {item.currency}{item.current_price}!
 
 Tracked URL: {item.url}"""
-                                )
-                            alert_message = f"""*** PRICE ALERT! ***
+                            )
+                        alert_message = f"""*** PRICE ALERT! ***
 Product: {item.product_name}
 URL: {item.url}
-New Price: {new_current_price_str}
-Target Price: {item.target_price}
+New Price: {item.currency}{item.current_price}
+Target Price: {item.currency}{item.target_price}
 """
-                            print(alert_message)
-                    except (ValueError, TypeError):
-                        print(f"Could not convert price to number for {item.product_name}.")
-                        item.current_price = new_current_price_str
-                else:
-                    print(f"Price element not found for {item.product_name} with selector {item.css_selector}")
+                        print(alert_message)
+                except (ValueError, TypeError) as e:
+                    print(f"Could not convert price to number for {item.product_name}: {e}")
+                    # Keep original string if conversion fails
+                    item.current_price = new_current_price_str
             except requests.exceptions.RequestException as e:
                 print(f"Error fetching {item.url}: {e}")
             except Exception as e:
