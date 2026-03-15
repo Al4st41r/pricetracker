@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Price Tracker | Architools</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>£</text></svg>"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/ao-styles.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            href="{{ url_for('static', filename='css/app.css') }}"
+        />
+        <link
+            rel="stylesheet"
+            type="text/css"
+            href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css"
+        />
+    </head>
+    <body>
+        <!-- Navigation Header -->
+        <nav class="nav-header">
+            <div class="nav-header-container">
+                <h1><a href="{{ url_for('index') }}">PriceTracker</a></h1>
+                <div class="hamburger" onclick="toggleMenu()">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="nav-header-nav" id="navMenu">
+                    <a href="{{ url_for('index') }}" class="active">Tracker</a>
+                    {% if current_user.is_authenticated %}
+                    <span class="nav-separator">|</span>
+                    <a href="{{ url_for('settings') }}"
+                        >{{ current_user.username }}</a
+                    >
+                    <span class="nav-separator">|</span>
+                    <a href="{{ url_for('logout') }}">Logout</a>
+                    {% else %}
+                    <span class="nav-separator">|</span>
+                    <a href="{{ url_for('login') }}">Login</a>
+                    <span class="nav-separator">|</span>
+                    <a href="{{ url_for('register') }}">Register</a>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="page-container">
+            <div class="container">
+                {% if not current_user.is_authenticated %}
+                <!-- Welcome Message for Unauthenticated Users -->
+                <div>
+                    <h1>Welcome to Price Tracker</h1>
+                    <p class="lead">
+                        Track prices of online items and get notified when they
+                        go on sale.
+                    </p>
+                    <p>
+                        Please
+                        <a href="{{ url_for('register') }}">register</a> and
+                        <a href="{{ url_for('login') }}">login</a> to start
+                        tracking prices.
+                    </p>
+                </div>
+                {% else %}
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="flashes">
+                    {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+                {% endif %} {% endwith %}
+
+                <!-- Track New Item Section -->
+                <div>
+                    <h2>Track a New Item</h2>
+                    <form id="track-form">
+                        <div class="form-group">
+                            <label for="url-input">Product URL</label>
+                            <input
+                                type="text"
+                                id="url-input"
+                                placeholder="Enter product URL"
+                                required
+                            />
+                            <small
+                                style="
+                                    display: block;
+                                    margin-top: 8px;
+                                    color: var(--color-text-muted);
+                                "
+                            >
+                                Uses browser emulation to handle protected sites
+                                like Amazon, gear4music, etc.
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">
+                            Discover Price
+                        </button>
+                    </form>
+                    <div id="loader" style="display: none">Loading...</div>
+                    <div id="page-content"></div>
+                </div>
+
+                <!-- Tracked Items Section -->
+                <div>
+                    <h2>Tracked Items</h2>
+                    <div class="table-controls">
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="sale-filter" />
+                                Show only items on sale
+                            </label>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <div id="tracked-items-list"></div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p>
+                &copy; 2025 Architools. PriceTracker v0.5.2 |
+                <a href="{{ url_for('about') }}">About</a>
+            </p>
+        </footer>
+
+        <!-- Modal -->
+        <div id="custom-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="close-button">&times;</span>
+                    <h2 id="modal-title"></h2>
+                </div>
+                <div class="modal-body" id="modal-body"></div>
+                <div class="modal-footer" id="modal-footer"></div>
+            </div>
+        </div>
+
+        <!-- JavaScript -->
+        <script>
+            const isAuthenticated = {{ current_user.is_authenticated | tojson }};
+            const APPLICATION_ROOT = "/pricetracker";
+
+            // Hamburger menu toggle
+            function toggleMenu() {
+                const navMenu = document.getElementById('navMenu');
+                navMenu.classList.toggle('active');
+            }
+
+            // Close menu when clicking outside
+            document.addEventListener('click', function(event) {
+                const navMenu = document.getElementById('navMenu');
+                const hamburger = document.querySelector('.hamburger');
+
+                if (navMenu && hamburger && !navMenu.contains(event.target) && !hamburger.contains(event.target)) {
+                    navMenu.classList.remove('active');
+                }
+            });
+        </script>
+        <script src="{{ url_for('static', filename='js/main.js') }}?v=2"></script>
+        <script src="{{ url_for('static', filename='js/inspector.js') }}"></script>
+        <script
+            type="text/javascript"
+            src="https://cdn.jsdelivr.net/npm/toastify-js"
+        ></script>
+    </body>
+</html>

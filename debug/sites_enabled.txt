@@ -1,0 +1,3 @@
+total 0
+lrwxrwxrwx 1 root root 34 Oct 18 00:44 default -> /etc/nginx/sites-available/default
+lrwxrwxrwx 1 root root 44 Oct 19 20:53 pricetracker.conf -> /etc/nginx/sites-available/pricetracker.conf

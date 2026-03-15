@@ -1,0 +1,301 @@
+/* PriceTracker Custom Styles */
+/* Updated to match Architools v2 Design System - Flat design */
+
+/* Page Content / iFrame Container */
+#page-content {
+    margin-top: var(--spacing-xl);
+    border: 2px solid var(--color-border);
+    overflow: auto;
+}
+
+/* Only apply size when iframe exists */
+#page-content:has(.page-iframe) {
+    min-width: 600px;
+    min-height: 600px;
+}
+
+.page-iframe {
+    width: 100% !important;
+    min-width: 600px !important;
+    height: 600px !important;
+    min-height: 600px !important;
+    border: none;
+    display: block;
+    background: white;
+}
+
+/* Force iframe size even on mobile */
+@media screen and (max-width: 768px) {
+    #page-content:has(.page-iframe) {
+        min-width: 600px;
+        min-height: 600px;
+        overflow: auto;
+    }
+
+    .page-iframe {
+        min-width: 600px !important;
+        min-height: 600px !important;
+        width: 100% !important;
+        height: 600px !important;
+    }
+
+    /* Ensure modal works on mobile */
+    .modal {
+        position: fixed !important;
+        z-index: 10000 !important;
+    }
+
+    .modal-content {
+        width: 90%;
+        margin: 10% auto;
+    }
+}
+
+/* Price Table Specific Styles */
+.price-above-target {
+    /* No special background */
+}
+
+.price-at-or-below-target {
+    background-color: #e8f5e9; /* Very light green */
+}
+
+.price-up {
+    color: var(--color-danger);
+    font-weight: 600;
+}
+
+.price-down {
+    color: var(--color-success);
+    font-weight: 600;
+}
+
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable-header:hover {
+    background-color: var(--color-black) !important;
+    color: var(--color-white);
+}
+
+/* Sale Badge */
+.sale-badge {
+    background-color: var(--color-warning);
+    color: white;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-left: 10px;
+    display: inline-block;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Table Controls */
+.table-controls {
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--color-white);
+    border: 1px solid var(--color-border);
+}
+
+/* Flash Messages */
+.flashes {
+    margin-bottom: var(--spacing-lg);
+}
+
+.flash {
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    color: white;
+    font-weight: 500;
+    border-left: 4px solid;
+}
+
+.flash-success {
+    background-color: var(--color-success);
+    border-left-color: var(--color-success);
+}
+
+.flash-error {
+    background-color: var(--color-danger);
+    border-left-color: var(--color-danger);
+}
+
+/* Modal Styles - Updated for Flat Design */
+.modal {
+    display: none;
+    position: fixed !important;
+    z-index: 10000 !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+.modal-content {
+    background-color: var(--color-white);
+    margin: 15% auto;
+    padding: 0;
+    border: 2px solid var(--color-black);
+    width: 80%;
+    max-width: 500px;
+    position: relative !important;
+    animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.close-button {
+    color: var(--color-text-muted);
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-button:hover,
+.close-button:focus {
+    color: var(--color-danger);
+}
+
+.modal-header {
+    padding: var(--spacing-lg);
+    border-bottom: 2px solid var(--color-border);
+}
+
+.modal-header h2 {
+    margin: 0;
+    text-align: left;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.modal-body {
+    padding: var(--spacing-lg);
+}
+
+.modal-footer {
+    padding: var(--spacing-lg);
+    border-top: 2px solid var(--color-border);
+    text-align: right;
+}
+
+.modal-footer button {
+    margin-left: var(--spacing-sm);
+}
+
+/* Loader */
+#loader {
+    text-align: center;
+    margin: var(--spacing-lg) 0;
+    font-size: 1.125rem;
+    color: var(--color-text-muted);
+}
+
+/* Welcome Message for Unauthenticated Users */
+.page-container > .container:first-child {
+    margin-top: var(--spacing-xl);
+}
+
+/* Main heading when authenticated */
+body > h1 {
+    text-align: center;
+    margin-top: var(--spacing-xl);
+    margin-bottom: var(--spacing-lg);
+    color: var(--color-text);
+}
+
+/* Form Specific Adjustments */
+.card form {
+    padding: var(--spacing-lg);
+    background: var(--color-white);
+    border: 2px solid var(--color-primary);
+}
+
+/* Table Action Buttons - Smaller size */
+td[data-field="Actions"] button {
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    margin-right: 5px;
+}
+
+/* Responsive Adjustments */
+@media screen and (max-width: 768px) {
+    /* Make table responsive */
+    table, thead, tbody, th, td, tr {
+        display: block;
+    }
+
+    thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    tr {
+        border: 1px solid var(--color-border);
+        margin-bottom: var(--spacing-md);
+    }
+
+    td {
+        border: none;
+        border-bottom: 1px solid var(--color-border);
+        position: relative;
+        padding-left: 50%;
+        text-align: right;
+    }
+
+    td:before {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: bold;
+        content: attr(data-field);
+    }
+
+    td[data-field="Actions"] {
+        text-align: center;
+        padding-left: 0;
+    }
+
+    td[data-field="Actions"]:before {
+        content: none;
+    }
+}
+
+/* Color Accents for Section Headings */
+.card h2 {
+    border-left: 4px solid var(--color-primary);
+    padding-left: var(--spacing-md);
+}
+
+/* Tracked Items List Container */
+#tracked-items-list {
+    margin-top: var(--spacing-md);
+}
+
+/* Enhanced table hover for price rows */
+tbody tr:hover {
+    background: var(--color-white);
+    border-left: 4px solid var(--color-primary);
+}

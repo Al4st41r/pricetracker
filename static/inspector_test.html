@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inspector Test</title>
+    <link rel="stylesheet" href="/pricetracker/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Inspector Test</h1>
+        <div id="page-content">
+            <iframe id="test-iframe" class="page-iframe" src="/pricetracker/static/iframe_content.html"></iframe>
+        </div>
+    </div>
+
+    <script src="/pricetracker/static/js/inspector.js"></script>
+    <script>
+        // Mocking functions and variables that are not available in this test environment
+        const APPLICATION_ROOT = '';
+        function showModal(options) {
+            console.log("showModal called with:", options);
+            alert(`Selected Text: ${options.body.querySelector('p').textContent}`);
+        }
+
+        function Toastify(options) {
+            console.log("Toastify called with:", options);
+            return {
+                showToast: () => console.log("Toast shown")
+            };
+        }
+
+        function loadTrackedItems() {
+            console.log("loadTrackedItems called");
+        }
+
+        const iframe = document.getElementById('test-iframe');
+        iframe.onload = function() {
+            initInspector(iframe, 'iframe_content.html', 'Iframe Content');
+        };
+    </script>
+</body>
+</html>

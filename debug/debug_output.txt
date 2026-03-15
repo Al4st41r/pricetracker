@@ -1,0 +1,9 @@
+{
+  "Accept": "*/*",
+  "Connection": "close",
+  "Host": "architools.duckdns.org",
+  "User-Agent": "curl/8.14.1",
+  "X-Forwarded-For": "90.193.92.233",
+  "X-Forwarded-Proto": "http",
+  "X-Real-Ip": "90.193.92.233"
+}

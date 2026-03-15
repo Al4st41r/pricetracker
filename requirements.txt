@@ -1,0 +1,8 @@
+gunicorn
+flask
+requests
+beautifulsoup4
+schedule
+waitress
+Flask-SQLAlchemy
+Flask-Login

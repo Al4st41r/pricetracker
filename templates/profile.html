@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile - PriceTracker | Architools</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ao-styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="nav-header">
+        <div class="nav-header-container">
+            <h1><a href="{{ url_for('index') }}">PriceTracker</a></h1>
+            <div class="hamburger" onclick="toggleMenu()">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="nav-header-nav" id="navMenu">
+                <a href="{{ url_for('index') }}">Tracker</a>
+                {% if current_user.is_authenticated %}
+                    <span class="nav-separator">|</span>
+                    <a href="{{ url_for('settings') }}" class="active">{{ current_user.username }}</a>
+                    <span class="nav-separator">|</span>
+                    <a href="{{ url_for('logout') }}">Logout</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="page-container">
+        <div class="container-narrow">
+            <div class="card mt-3">
+                <h1>Profile Settings</h1>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    <div class="flashes">
+                    {% for category, message in messages %}
+                      <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+
+                <form method="POST">
+                    <div class="checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="email_notifications" id="email_notifications" {% if current_user.email_notifications %}checked{% endif %}>
+                            Receive email notifications for price alerts
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block mt-2">Save Changes</button>
+                </form>
+
+                <div class="mt-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary btn-block">Back to Tracker</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 Architools. PriceTracker</p>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        function toggleMenu() {
+            const navMenu = document.getElementById('navMenu');
+            navMenu.classList.toggle('active');
+        }
+
+        document.addEventListener('click', function(event) {
+            const navMenu = document.getElementById('navMenu');
+            const hamburger = document.querySelector('.hamburger');
+
+            if (navMenu && hamburger && !navMenu.contains(event.target) && !hamburger.contains(event.target)) {
+                navMenu.classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>

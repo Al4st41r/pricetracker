@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - PriceTracker | Architools</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ao-styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="nav-header">
+        <div class="nav-header-container">
+            <h1><a href="{{ url_for('index') }}">PriceTracker</a></h1>
+            <div class="nav-header-nav">
+                <a href="{{ url_for('index') }}">Tracker</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="page-container">
+        <div class="container">
+            <div class="card mt-3">
+                <h1>About PriceTracker</h1>
+                <p class="lead">Track prices of online items and get notified when they go on sale.</p>
+
+                <h2 class="mt-2">How It Works</h2>
+                <p>PriceTracker helps you monitor product prices from online stores and alerts you when prices drop to your target.</p>
+
+                <h2 class="mt-2">How to Use</h2>
+                <ol style="line-height: 1.8;">
+                    <li><strong>Track a New Item:</strong> Paste the URL of the product page into the input field on the main page and click "Track New Item".</li>
+                    <li><strong>Select the Price:</strong> The webpage will be loaded in an inspector view. Click on the price of the item you want to track.</li>
+                    <li><strong>Confirm Details:</strong> A dialog will appear asking you to confirm the product name and enter your target price.</li>
+                    <li><strong>View Tracked Items:</strong> The item will be added to your tracked items list on the main page.</li>
+                    <li><strong>Get Notified:</strong> The application checks prices daily. If an item's price drops to or below your target, it will be highlighted in the list.</li>
+                </ol>
+
+                <div class="info-box info-box-highlight mt-2">
+                    <strong>Pro Tip</strong>
+                    <p style="margin: 0;">Use the "Show only items on sale" filter to quickly see which tracked items have hit your target price.</p>
+                </div>
+
+                <div class="mt-2">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary">Back to Tracker</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 Architools. PriceTracker v0.5.2</p>
+    </footer>
+</body>
+</html>

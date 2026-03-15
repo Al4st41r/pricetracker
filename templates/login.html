@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - PriceTracker | Architools</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ao-styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <nav class="nav-header">
+        <div class="nav-header-container">
+            <h1><a href="{{ url_for('index') }}">PriceTracker</a></h1>
+            <div class="nav-header-nav">
+                <a href="{{ url_for('login') }}" class="active">Login</a>
+                <span class="nav-separator">|</span>
+                <a href="{{ url_for('register') }}">Register</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="page-container">
+        <div class="container-narrow">
+            <div class="card mt-3">
+                <h1>Login</h1>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    <div class="flashes">
+                    {% for category, message in messages %}
+                      <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" placeholder="Enter your username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Login</button>
+                </form>
+                <p class="mt-1">Don't have an account? <a href="{{ url_for('register') }}">Register here</a>.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 Architools. PriceTracker</p>
+    </footer>
+</body>
+</html>
