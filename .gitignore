@@ -6,3 +6,4 @@ instance/
 *.db
 backups/
 backup/
+.env

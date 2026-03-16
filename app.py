@@ -18,11 +18,18 @@ from urllib.parse import urljoin, urlparse
 from datetime import datetime, timedelta
 from parsers import parsers
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from dotenv import load_dotenv
+
+load_dotenv()
 
 APP_VERSION = "0.6.0"
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'a_super_secret_key' # Replace with a real secret key in production
+
+_secret_key = os.environ.get('SECRET_KEY')
+if not _secret_key:
+    raise RuntimeError("SECRET_KEY environment variable is not set. Add it to your .env file.")
+app.config['SECRET_KEY'] = _secret_key
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'pricetracker.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -718,7 +725,8 @@ if __name__ == '__main__':
     scheduler_thread.daemon = True # Daemonize thread so it exits when main program exits
     scheduler_thread.start()
 
-    app.run(debug=True, port=5012)
+    debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1'
+    app.run(debug=debug_mode, port=5012)
 
 def send_email(to, subject, body):
     # This is a dummy email function. In a real application, you would use
