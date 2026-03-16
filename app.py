@@ -32,6 +32,7 @@ if not _secret_key:
 app.config['SECRET_KEY'] = _secret_key
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'pricetracker.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JS_APP_ROOT'] = os.environ.get('JS_APP_ROOT', '/pricetracker')
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 

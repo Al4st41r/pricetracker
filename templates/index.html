@@ -153,7 +153,7 @@
         <!-- JavaScript -->
         <script>
             const isAuthenticated = {{ current_user.is_authenticated | tojson }};
-            const APPLICATION_ROOT = "/pricetracker";
+            const APPLICATION_ROOT = "{{ config.JS_APP_ROOT }}";
 
             // Hamburger menu toggle
             function toggleMenu() {
