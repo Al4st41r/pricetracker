@@ -7,3 +7,4 @@ instance/
 backups/
 backup/
 .env
+user_report.log

@@ -48,6 +48,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(128))
     email_notifications = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     items = db.relationship('TrackedItem', backref='owner', lazy=True)
 
     def set_password(self, password):
@@ -117,11 +118,35 @@ def login():
         return redirect(url_for('index'))
     return render_template('login.html')
 
+# Simple in-memory registration rate limit (per client IP, per worker process).
+REGISTER_LIMIT = int(os.environ.get('REGISTER_LIMIT', '5'))
+REGISTER_WINDOW = 3600  # seconds
+_register_attempts = {}
+
+def _register_rate_limited(ip):
+    now = time.time()
+    recent = [t for t in _register_attempts.get(ip, []) if now - t < REGISTER_WINDOW]
+    limited = len(recent) >= REGISTER_LIMIT
+    if not limited:
+        recent.append(now)
+    _register_attempts[ip] = recent
+    return limited
+
+def ensure_schema():
+    """Add columns introduced after the first release (SQLite has no auto-migrate)."""
+    cols = [r[1] for r in db.session.execute(db.text("PRAGMA table_info(user)"))]
+    if cols and 'created_at' not in cols:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN created_at DATETIME"))
+        db.session.commit()
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     if request.method == 'POST':
+        if _register_rate_limited(request.remote_addr):
+            flash('Too many registration attempts. Please try again later.', 'error')
+            return redirect(url_for('register'))
         if User.query.filter_by(username=request.form.get('username')).first():
             flash('Username already exists', 'error')
             return redirect(url_for('register'))
@@ -718,6 +743,7 @@ def run_scheduler():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        ensure_schema()
     # Schedule the price checking function to run once a day
     schedule.every().day.at("00:00").do(check_prices) # Run at midnight
 

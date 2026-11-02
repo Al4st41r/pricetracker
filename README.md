@@ -81,6 +81,9 @@ python count_users.py
 # Print all users
 python print_users.py
 
+# Report user growth (exit 1 if over threshold; defaults 100 total / 10 per 24h)
+uv run user_report.py --log user_report.log
+
 # Reset user password
 python debug/reset_.py <username> <new_password>
 ```
