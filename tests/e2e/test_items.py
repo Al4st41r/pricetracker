@@ -68,9 +68,12 @@ def test_price_alert_sent_when_target_price_met(app, test_user):
     mock_response.status_code = 200
     mock_response.encoding = 'utf-8'
     mock_response.raise_for_status = lambda: None
+    mock_response.is_redirect = False
+    mock_response.is_permanent_redirect = False
 
     with app.app_context():
         with patch('app.requests.get', return_value=mock_response), \
+                 patch('app.validate_public_url', side_effect=lambda u: u), \
              patch('app.parsers', {}), \
              patch('app.send_email') as mock_email:
             check_prices()
