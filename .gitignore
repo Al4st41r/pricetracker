@@ -8,3 +8,5 @@ backups/
 backup/
 .env
 user_report.log
+node_modules/
+debug/
