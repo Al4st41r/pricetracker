@@ -9,6 +9,20 @@ let currentSort = {
 let isSaleFilterActive = false;
 
 // --- HELPER FUNCTIONS ---
+function escapeHtml(value) {
+    return String(value === null || value === undefined ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+// Only http(s) URLs may be used as link targets.
+function safeHref(url) {
+    return /^https?:\/\//i.test(String(url || '')) ? String(url) : '#';
+}
+
 function formatCurrency(priceStr, currency) {
     const displayCurrency = currency || 'GBP';
     if (priceStr === null || priceStr === undefined || String(priceStr).trim() === 'N/A' || String(priceStr).trim() === '') {
@@ -105,8 +119,8 @@ function renderTable(items) {
         const needsBrowser = item['Needs Browser Check'] ? ' <span title="Requires browser emulation" style="cursor:help;">🌐</span>' : '';
 
         row.innerHTML = `
-            <td data-field="Product Name"><a href="${APPLICATION_ROOT}/item/${item['id']}" class="item-link">${item['Product Name']}</a> ${saleBadge}${needsBrowser}</td>
-            <td data-field="URL"><a href="${item['URL']}" target="_blank" title="${item['URL']}">${item['URL'].substring(0, 30)}...</a></td>
+            <td data-field="Product Name"><a href="${APPLICATION_ROOT}/item/${encodeURIComponent(item['id'])}" class="item-link">${escapeHtml(item['Product Name'])}</a> ${saleBadge}${needsBrowser}</td>
+            <td data-field="URL"><a href="${escapeHtml(safeHref(item['URL']))}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item['URL'])}">${escapeHtml(item['URL'].substring(0, 30))}...</a></td>
             <td data-field="Current Price">${formatCurrency(item['Current Price'], item['Currency'])}${priceChangeIndicator}</td>
             <td data-field="Target Price">${formatCurrency(item['Target Price'], item['Currency'])}</td>
             <td data-field="Method"><span class="badge badge-info" style="font-size: 0.7em; padding: 2px 6px; background: #eee; border-radius: 4px; color: #666;">${method}</span></td>
@@ -301,8 +315,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const currentName = nameCell.textContent;
             const currentPrice = parsePrice(priceCell.textContent) || '';
 
-            nameCell.innerHTML = `<input type="text" value="${currentName}">`;
-            priceCell.innerHTML = `<input type="text" value="${currentPrice}">`;
+            nameCell.innerHTML = `<input type="text" value="${escapeHtml(currentName)}">`;
+            priceCell.innerHTML = `<input type="text" value="${escapeHtml(currentPrice)}">`;
             actionsCell.innerHTML = '<button class="save-btn">Save</button><button class="cancel-btn">Cancel</button>';
         }
 
@@ -366,15 +380,15 @@ document.getElementById('track-form').addEventListener('submit', function(event)
             loader.textContent = 'Loading...';
 
             if (data.error) {
-                pageContent.innerHTML = `<p style="color: var(--color-danger);">Error: ${data.error}</p>`;
+                pageContent.innerHTML = `<p style="color: var(--color-danger);">Error: ${escapeHtml(data.error)}</p>`;
             } else {
                 // Show screenshot and detected price
                 const resultHtml = `
                     <div style="padding: var(--spacing-lg);">
-                        <h3>Page Loaded: ${data.page_title || 'Product Page'}</h3>
+                        <h3>Page Loaded: ${escapeHtml(data.page_title || 'Product Page')}</h3>
                         ${data.success ? `
                             <div style="margin: var(--spacing-md) 0; padding: var(--spacing-md); background: var(--color-success); color: white;">
-                                <strong>✓ Auto-detected price: ${data.price}</strong>
+                                <strong>✓ Auto-detected price: ${escapeHtml(data.price)}</strong>
                             </div>
                         ` : `
                             <div style="margin: var(--spacing-md) 0; padding: var(--spacing-md); background: var(--color-warning); color: white;">
@@ -383,18 +397,18 @@ document.getElementById('track-form').addEventListener('submit', function(event)
                             </div>
                         `}
                         <div style="margin: var(--spacing-lg) 0;">
-                            <img src="data:image/png;base64,${data.screenshot}"
+                            <img src="data:image/png;base64,${escapeHtml(data.screenshot)}"
                                  style="max-width: 100%; border: 2px solid var(--color-border);"
                                  alt="Page screenshot">
                         </div>
                         <form id="confirm-track-form" style="margin-top: var(--spacing-lg);">
                             <div class="form-group">
                                 <label for="confirm-product-name">Product Name:</label>
-                                <input type="text" id="confirm-product-name" value="${data.page_title || ''}" required>
+                                <input type="text" id="confirm-product-name" value="${escapeHtml(data.page_title || '')}" required>
                             </div>
                             <div class="form-group">
                                 <label for="confirm-price">Current Price:</label>
-                                <input type="text" id="confirm-price" value="${data.price || ''}"
+                                <input type="text" id="confirm-price" value="${escapeHtml(data.price || '')}"
                                        placeholder="e.g., £99.99" required>
                             </div>
                             <div class="form-group">
@@ -404,7 +418,7 @@ document.getElementById('track-form').addEventListener('submit', function(event)
                             </div>
                             <div class="form-group">
                                 <label for="confirm-selector">CSS Selector:</label>
-                                <input type="text" id="confirm-selector" value="${data.selector || ''}"
+                                <input type="text" id="confirm-selector" value="${escapeHtml(data.selector || '')}"
                                        placeholder="Leave empty to use auto-detect" readonly>
                             </div>
                             <button type="submit" class="btn btn-primary">Track This Item</button>
@@ -469,6 +483,6 @@ document.getElementById('track-form').addEventListener('submit', function(event)
         .catch(error => {
             loader.style.display = 'none';
             loader.textContent = 'Loading...';
-            pageContent.innerHTML = `<p style="color: var(--color-danger);">Error: ${error}</p>`;
+            pageContent.innerHTML = `<p style="color: var(--color-danger);">Error: ${escapeHtml(error)}</p>`;
         });
 });

@@ -10,11 +10,11 @@
         />
         <link
             rel="stylesheet"
-            href="{{ url_for('static', filename='css/ao-styles.css') }}"
+            href="{{ static_url('css/ao-styles.css') }}"
         />
         <link
             rel="stylesheet"
-            href="{{ url_for('static', filename='css/app.css') }}"
+            href="{{ static_url('css/app.css') }}"
         />
         <link
             rel="stylesheet"
@@ -171,8 +171,8 @@
                 }
             });
         </script>
-        <script src="{{ url_for('static', filename='js/main.js') }}?v=2"></script>
-        <script src="{{ url_for('static', filename='js/inspector.js') }}"></script>
+        <script src="{{ static_url('js/main.js') }}"></script>
+        <script src="{{ static_url('js/inspector.js') }}"></script>
         <script
             type="text/javascript"
             src="https://cdn.jsdelivr.net/npm/toastify-js"

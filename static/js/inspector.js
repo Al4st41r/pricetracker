@@ -32,10 +32,10 @@ function initInspector(iframe, pageUrl, pageTitle) {
 
         const body = document.createElement('div');
         body.innerHTML = `
-            <p><strong>Selected Text:</strong> ${text}</p>
+            <p><strong>Selected Text:</strong> ${escapeHtml(text)}</p>
             <form id="track-item-modal-form" style="display: flex; flex-direction: column; gap: 10px;">
                 <label for="product-name-input">Product Name:</label>
-                <input type="text" id="product-name-input" value="${pageTitle}" required>
+                <input type="text" id="product-name-input" value="${escapeHtml(pageTitle)}" required>
                 <label for="target-price-input">Target Price:</label>
                 <input type="text" id="target-price-input" placeholder="99.99" required>
             </form>
