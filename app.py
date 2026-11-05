@@ -13,6 +13,9 @@ import os
 import re
 import threading
 import base64
+import logging
+import socket
+import ipaddress
 from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urljoin, urlparse
 from datetime import datetime, timedelta
@@ -33,6 +36,21 @@ app.config['SECRET_KEY'] = _secret_key
 app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'pricetracker.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JS_APP_ROOT'] = os.environ.get('JS_APP_ROOT', '/pricetracker')
+
+# Session cookie hardening. Secure is on by default (the site is served over
+# HTTPS); set COOKIE_SECURE=0 only for plain-HTTP local development.
+_cookie_secure = os.environ.get('COOKIE_SECURE', '1') != '0'
+app.config['SESSION_COOKIE_SECURE'] = _cookie_secure
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['REMEMBER_COOKIE_SECURE'] = _cookie_secure
+app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
+
+logger = logging.getLogger('pricetracker')
+
+USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
@@ -83,6 +101,91 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
+
+
+# --- Outbound URL safety (SSRF protection) ---
+
+class UnsafeURLError(ValueError):
+    """Raised when a URL is not a public http(s) URL."""
+
+def _is_public_ip(addr):
+    ip = ipaddress.ip_address(addr)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    # is_global is False for loopback, private, link-local, reserved and
+    # unspecified addresses.
+    return ip.is_global and not ip.is_multicast
+
+def validate_public_url(url):
+    """Return the URL if it is http(s) and resolves only to public addresses."""
+    if not isinstance(url, str):
+        raise UnsafeURLError('Invalid URL')
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ('http', 'https'):
+        raise UnsafeURLError('URL must start with http:// or https://')
+    host = parsed.hostname
+    if not host:
+        raise UnsafeURLError('URL has no host')
+    try:
+        port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+        infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, ValueError):
+        raise UnsafeURLError('Host could not be resolved')
+    if not infos:
+        raise UnsafeURLError('Host could not be resolved')
+    for info in infos:
+        if not _is_public_ip(info[4][0]):
+            raise UnsafeURLError('URL points to a non-public address')
+    return url
+
+def safe_get(url, max_redirects=5, **kwargs):
+    """requests.get that validates the URL and every redirect hop."""
+    kwargs.pop('allow_redirects', None)
+    current = url
+    for _ in range(max_redirects + 1):
+        validate_public_url(current)
+        response = requests.get(current, allow_redirects=False, **kwargs)
+        if response.is_redirect or response.is_permanent_redirect:
+            location = response.headers.get('Location')
+            if not location:
+                return response
+            current = urljoin(current, location)
+            continue
+        return response
+    raise UnsafeURLError('Too many redirects')
+
+def guard_browser_page(page):
+    """Block every request Chromium makes to a non-public address (covers redirects)."""
+    def handler(route):
+        req_url = route.request.url
+        if urlparse(req_url).scheme in ('data', 'blob', 'about'):
+            return route.continue_()
+        try:
+            validate_public_url(req_url)
+        except UnsafeURLError:
+            return route.abort()
+        return route.continue_()
+    page.route('**/*', handler)
+
+@app.context_processor
+def static_helpers():
+    def static_url(filename):
+        """Static URL with a modification-time query string so edits bust caches."""
+        try:
+            version = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+        except OSError:
+            version = APP_VERSION
+        return url_for('static', filename=filename, v=version)
+    return {'static_url': static_url}
+
+def send_email(to, subject, body):
+    # This is a dummy email function. In a real application, you would use
+    # a library like smtplib to send emails.
+    print("---- SENDING EMAIL ----")
+    print(f"To: {to}")
+    print(f"Subject: {subject}")
+    print(f"Body: {body}")
+    print("-----------------------")
 
 
 def detect_currency(price_str):
@@ -186,25 +289,21 @@ def reset_password_request():
     )
     return redirect(url_for('settings'))
 
-@app.route('/debug')
-def debug():
-    return jsonify(dict(request.headers))
-
 @app.route('/proxy')
+@login_required
 def proxy():
     url = request.args.get('url')
     if not url:
         return jsonify({'error': 'URL is required'}), 400
 
-    # Validate URL format
-    if not url.startswith('http'):
-        return jsonify({'error': 'Invalid URL format. URL must start with http:// or https://'}), 400
+    try:
+        validate_public_url(url)
+    except UnsafeURLError:
+        return jsonify({'error': 'Invalid URL. It must be a public http:// or https:// address.'}), 400
 
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
+        headers = {'User-Agent': USER_AGENT}
+        response = safe_get(url, headers=headers, timeout=10)
         response.encoding = 'utf-8'
         response.raise_for_status()  # Raise an exception for bad status codes
 
@@ -231,6 +330,8 @@ def proxy():
             return jsonify({'error': 'Product page not found (404). Please check the URL is correct.'}), 404
         else:
             return jsonify({'error': f'HTTP {status_code} error accessing this website.'}), 500
+    except UnsafeURLError:
+        return jsonify({'error': 'Invalid URL. It must be a public http:// or https:// address.'}), 400
     except requests.exceptions.Timeout:
         return jsonify({'error': 'Request timed out. The website took too long to respond.'}), 500
     except requests.exceptions.RequestException as e:
@@ -245,14 +346,16 @@ def discover_price():
     Use Playwright to discover price on a product page.
     Handles JavaScript-rendered content and bot protection.
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     url = data.get('url')
 
     if not url:
         return jsonify({'error': 'URL is required'}), 400
 
-    if not url.startswith('http'):
-        return jsonify({'error': 'Invalid URL format'}), 400
+    try:
+        validate_public_url(url)
+    except UnsafeURLError:
+        return jsonify({'error': 'Invalid URL. It must be a public http:// or https:// address.'}), 400
 
     try:
         with sync_playwright() as p:
@@ -260,9 +363,10 @@ def discover_price():
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 viewport={'width': 1280, 'height': 720},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent=USER_AGENT
             )
             page = context.new_page()
+            guard_browser_page(page)
 
             # Navigate to the page
             print(f"Navigating to {url}...")
@@ -392,6 +496,12 @@ def track_item():
     if not all([url, target_price]):
         return jsonify({'error': 'URL and target price are required'}), 400
 
+    url = url.strip()
+    try:
+        validate_public_url(url)
+    except UnsafeURLError:
+        return jsonify({'error': 'Invalid URL. It must be a public http:// or https:// address.'}), 400
+
     try:
         formatted_target_price = "{:.2f}".format(float(target_price))
     except (ValueError, TypeError):
@@ -406,7 +516,7 @@ def track_item():
     domain = urlparse(url).netloc
     if domain in parsers:
         try:
-            response = requests.get(url, timeout=10)
+            response = safe_get(url, timeout=10)
             response.encoding = 'utf-8'
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -419,13 +529,15 @@ def track_item():
                 last_check_method = 'parser'
             else:
                 return jsonify({'error': 'Could not find the price for the given URL.'}), 400
+        except UnsafeURLError:
+            return jsonify({'error': 'Invalid URL. It must be a public http:// or https:// address.'}), 400
         except requests.exceptions.RequestException as e:
             return jsonify({'error': f'Error fetching URL: {e}'}), 500
     else:
         if not css_selector:
             return jsonify({'error': 'CSS selector is required for unsupported websites.'}), 400
         try:
-            response = requests.get(url, timeout=10)
+            response = safe_get(url, timeout=10)
             response.encoding = 'utf-8'
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -617,9 +729,11 @@ def browser_check_price(url):
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
                 viewport={'width': 1280, 'height': 720},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                user_agent=USER_AGENT
             )
             page = context.new_page()
+            guard_browser_page(page)
+            validate_public_url(url)
             page.goto(url, wait_until='networkidle', timeout=30000)
             page.wait_for_timeout(2000)
 
@@ -665,79 +779,102 @@ def browser_check_price(url):
         print(f"Browser check failed for {url}: {e}")
     return None, None
 
+def check_item(item):
+    """Run the three-tier price check for one item and update it (no commit)."""
+    print(f"Checking {item.product_name} at {item.url}")
+    new_price_str = None
+    method = None
+    headers = {'User-Agent': USER_AGENT}
+
+    # Tier 1: Site-specific Parser
+    domain = urlparse(item.url).netloc
+    if domain in parsers:
+        try:
+            response = safe_get(item.url, headers=headers, timeout=10)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.text, 'html.parser')
+            price_info = parsers[domain](soup)
+            if price_info:
+                new_price_str = price_info['price']
+                method = 'parser'
+                print(f"Parser success for {item.product_name}")
+        except Exception as e:
+            print(f"Parser failed for {item.product_name}: {e}")
+
+    # Tier 2: CSS Selector (BeautifulSoup)
+    if not new_price_str and item.css_selector:
+        try:
+            response = safe_get(item.url, headers=headers, timeout=10)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            soup = BeautifulSoup(response.text, 'html.parser')
+            price_element = soup.select_one(item.css_selector)
+            if price_element:
+                new_price_str = price_element.get_text(strip=True)
+                method = 'css_selector'
+                print(f"CSS selector success for {item.product_name}")
+        except Exception as e:
+            print(f"CSS selector failed for {item.product_name}: {e}")
+
+    # Tier 3: Browser Recheck (Playwright)
+    time_for_weekly_check = False
+    if item.needs_browser_check:
+        if not item.last_browser_check or (datetime.now() - item.last_browser_check) > timedelta(days=7):
+            time_for_weekly_check = True
+
+    if not new_price_str or time_for_weekly_check:
+        reason = "Failure" if not new_price_str else "Weekly check"
+        print(f"Attempting browser check for {item.product_name} (Reason: {reason})")
+        browser_price, new_selector = browser_check_price(item.url)
+        if browser_price:
+            # If we got here because of failure, mark as needs browser
+            if not new_price_str:
+                item.needs_browser_check = True
+
+            new_price_str = browser_price
+            method = 'browser'
+            item.last_browser_check = datetime.now()
+            # If we found a new selector, update it
+            if new_selector and new_selector != item.css_selector:
+                item.css_selector = new_selector
+            print(f"Browser check success for {item.product_name}")
+        else:
+            print(f"Browser check failed for {item.product_name}")
+
+    if new_price_str:
+        update_item_price(item, new_price_str, method)
+
 def check_prices():
     with app.app_context():
         print("Checking prices...")
-        items = TrackedItem.query.all()
-        for item in items:
-            print(f"Checking {item.product_name} at {item.url}")
-            new_price_str = None
-            method = None
-            
-            # Tier 1: Site-specific Parser
-            domain = urlparse(item.url).netloc
-            if domain in parsers:
-                try:
-                    response = requests.get(item.url, timeout=10)
-                    response.encoding = 'utf-8'
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    price_info = parsers[domain](soup)
-                    if price_info:
-                        new_price_str = price_info['price']
-                        method = 'parser'
-                        print(f"Parser success for {item.product_name}")
-                except Exception as e:
-                    print(f"Parser failed for {item.product_name}: {e}")
-
-            # Tier 2: CSS Selector (BeautifulSoup)
-            if not new_price_str and item.css_selector:
-                try:
-                    response = requests.get(item.url, timeout=10)
-                    response.encoding = 'utf-8'
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    price_element = soup.select_one(item.css_selector)
-                    if price_element:
-                        new_price_str = price_element.get_text(strip=True)
-                        method = 'css_selector'
-                        print(f"CSS selector success for {item.product_name}")
-                except Exception as e:
-                    print(f"CSS selector failed for {item.product_name}: {e}")
-
-            # Tier 3: Browser Recheck (Playwright)
-            time_for_weekly_check = False
-            if item.needs_browser_check:
-                if not item.last_browser_check or (datetime.now() - item.last_browser_check) > timedelta(days=7):
-                    time_for_weekly_check = True
-
-            if not new_price_str or time_for_weekly_check:
-                reason = "Failure" if not new_price_str else "Weekly check"
-                print(f"Attempting browser check for {item.product_name} (Reason: {reason})")
-                browser_price, new_selector = browser_check_price(item.url)
-                if browser_price:
-                    # If we got here because of failure, mark as needs browser
-                    if not new_price_str:
-                        item.needs_browser_check = True
-                    
-                    new_price_str = browser_price
-                    method = 'browser'
-                    item.last_browser_check = datetime.now()
-                    # If we found a new selector, update it
-                    if new_selector and new_selector != item.css_selector:
-                        item.css_selector = new_selector
-                    print(f"Browser check success for {item.product_name}")
-                else:
-                    print(f"Browser check failed for {item.product_name}")
-
-            if new_price_str:
-                update_item_price(item, new_price_str, method)
-
-        db.session.commit()
+        item_ids = [row[0] for row in db.session.query(TrackedItem.id).all()]
+        for item_id in item_ids:
+            try:
+                item = db.session.get(TrackedItem, item_id)
+                if item is None:
+                    continue
+                check_item(item)
+                db.session.commit()
+            except Exception:
+                logger.exception("Price check failed for item %s", item_id)
+                db.session.rollback()
         print("Price checking complete.")
+
+def safe_check_prices():
+    """Scheduled wrapper: no failure may escape and end the scheduler thread."""
+    try:
+        check_prices()
+    except Exception:
+        logger.exception("Scheduled price check failed")
 
 
 def run_scheduler():
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
+        except Exception:
+            logger.exception("Scheduler iteration failed")
         time.sleep(1) # check every 1 second
 
 if __name__ == '__main__':
@@ -745,7 +882,7 @@ if __name__ == '__main__':
         db.create_all()
         ensure_schema()
     # Schedule the price checking function to run once a day
-    schedule.every().day.at("00:00").do(check_prices) # Run at midnight
+    schedule.every().day.at("00:00").do(safe_check_prices) # Run at midnight
 
     # Start the scheduler in a separate thread
     scheduler_thread = threading.Thread(target=run_scheduler)
@@ -754,12 +891,3 @@ if __name__ == '__main__':
 
     debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1'
     app.run(debug=debug_mode, port=5012)
-
-def send_email(to, subject, body):
-    # This is a dummy email function. In a real application, you would use
-    # a library like smtplib to send emails.
-    print("---- SENDING EMAIL ----")
-    print(f"To: {to}")
-    print(f"Subject: {subject}")
-    print(f"Body: {body}")
-    print("-----------------------")

@@ -37,6 +37,8 @@ def app(tmp_path_factory):
         'SECRET_KEY': 'test-secret-key-for-testing-only',
         'JS_APP_ROOT': '',
         'WTF_CSRF_ENABLED': False,
+        'SESSION_COOKIE_SECURE': False,
+        'REMEMBER_COOKIE_SECURE': False,
     })
     with flask_app.app_context():
         db.create_all()
